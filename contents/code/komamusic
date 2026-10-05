@@ -8,6 +8,7 @@
                               answering, and wait (up to 5 s) until it is
   komamusic stop-mpd          stop the mpd systemd user service
   komamusic stop              stop playback
+  komamusic doctor [--json]   what kOMA Music Thing needs and what's missing
   komamusic rmpc              run rmpc for the panel: your rmpc config with album
                               art off (the popup's terminal can't draw images) and
                               the Cava visualizer in album art's place
@@ -220,6 +221,48 @@ def exec_rmpc():
     os.execvp("rmpc", ["rmpc", "--config", str(panel_rmpc_config())])
 
 
+# ---- dependencies -----------------------------------------------------------------
+
+# name -> (Arch package, required?, what it's for)
+DEPENDENCIES = {
+    "rmpc": ("rmpc", True, "picking music and building the queue"),
+    "mpd": ("mpd", True, "playing music"),
+    "mpd.service": ("mpd", True, "the Start rmpc button (systemd user unit)"),
+    "QMLTermWidget": ("qmltermwidget", False, "rmpc inside the popup (else a terminal window)"),
+    "cava": ("cava", False, "the visualizer next to the queue"),
+}
+
+
+def qml_module_dirs(env=None):
+    env = os.environ if env is None else env
+    paths = []
+    for var in ("QML_IMPORT_PATH", "QML2_IMPORT_PATH"):
+        paths += [p for p in env.get(var, "").split(":") if p]
+    return [Path(p) for p in paths] + [
+        Path("/usr/lib/qt6/qml"),
+        Path("/usr/lib64/qt6/qml"),
+        Path("/usr/lib/x86_64-linux-gnu/qt6/qml"),
+    ]
+
+
+def doctor(which=shutil.which, env=None):
+    found = {
+        "rmpc": which("rmpc") is not None,
+        "mpd": which("mpd") is not None,
+        "mpd.service": run(["systemctl", "--user", "cat", "mpd.service"])[0] == 0,
+        "QMLTermWidget": any((d / "QMLTermWidget" / "qmldir").is_file() for d in qml_module_dirs(env)),
+        "cava": which("cava") is not None,
+    }
+    return [
+        {"name": name, "ok": found[name], "package": pkg, "required": req, "for": why}
+        for name, (pkg, req, why) in DEPENDENCIES.items()
+    ]
+
+
+def missing_packages(report):
+    return sorted({d["package"] for d in report if not d["ok"]})
+
+
 # ---- commands -----------------------------------------------------------------
 
 
@@ -290,12 +333,25 @@ def fmt_time(seconds):
 def main():
     ap = argparse.ArgumentParser(prog="komamusic", description=__doc__.split("\n\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
-    for name in ("status", "toggle", "play", "pause", "next", "prev", "stop", "start-mpd", "stop-mpd", "rmpc"):
+    commands = ("status", "toggle", "play", "pause", "next", "prev", "stop", "start-mpd", "stop-mpd", "rmpc", "doctor")
+    for name in commands:
         sub.add_parser(name).add_argument("--json", action="store_true")
     a = ap.parse_args()
     try:
         if a.cmd == "rmpc":
             exec_rmpc()
+        if a.cmd == "doctor":
+            report = doctor()
+            if a.json:
+                print(json.dumps(report))
+            else:
+                for d in report:
+                    mark = "ok " if d["ok"] else ("MISSING" if d["required"] else "missing")
+                    print(f"  {mark:<8} {d['name']:<14} {d['for']}")
+                pkgs = missing_packages(report)
+                if pkgs:
+                    print(f"Install: sudo pacman -S --needed {' '.join(pkgs)}  (Arch package names)")
+            sys.exit(1 if any(not d["ok"] and d["required"] for d in report) else 0)
         if a.cmd in ("start-mpd", "stop-mpd"):
             r = start_mpd() if a.cmd == "start-mpd" else stop_mpd()
             if a.json:

@@ -12,6 +12,23 @@ kpackagetool6 --type Plasma/Applet --upgrade "$dir" >/dev/null 2>&1 ||
 mkdir -p "$HOME/.local/bin"
 ln -sf "$dir/contents/code/komamusic" "$HOME/.local/bin/komamusic"
 echo "kOMA Music Thing installed; CLI linked at ~/.local/bin/komamusic"
+
+# Dependencies: rmpc, mpd (+ its systemd user unit), QMLTermWidget, cava.
+# On Arch they're all in the official repos; offer to install what's missing.
+if ! missing=$(python3 "$dir/contents/code/komamusic" doctor --json |
+  python3 -c 'import json,sys; print(" ".join(sorted({d["package"] for d in json.load(sys.stdin) if not d["ok"]})))'); then
+  missing=""
+fi
+if [[ -n "$missing" ]]; then
+  python3 "$dir/contents/code/komamusic" doctor || true
+  if command -v pacman >/dev/null && [[ -t 0 ]]; then
+    read -rp "Install them now with: sudo pacman -S --needed $missing ? [Y/n] " answer
+    # shellcheck disable=SC2086  # one argument per package
+    [[ "$answer" =~ ^[Nn] ]] || sudo pacman -S --needed $missing
+  else
+    echo "Install these packages with your package manager: $missing"
+  fi
+fi
 [[ "${1:-}" == "--no-place" ]] && exit 0
 
 # Add the widget live, then write each panel's order while plasmashell is
