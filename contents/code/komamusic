@@ -177,26 +177,42 @@ def stop_mpd():
 # ---- rmpc inside the panel ----------------------------------------------------------
 
 
+def add_setting(config_text, setting):
+    """Insert `setting` right after the config's opening parenthesis (after any
+    #![...] attributes)."""
+    return re.sub(
+        r"^(\s*#!\[[^\]]*\]\s*)*\(", lambda m: m.group(0) + f"\n    {setting},", config_text, count=1, flags=re.M
+    )
+
+
 def without_album_art(config_text):
     """The rmpc config with album_art's method set to None: the popup's terminal
     (QMLTermWidget) can't show Sixel/Kitty images and would print their raw data."""
     text, n = re.subn(r"(album_art\s*:\s*\(\s*method\s*:\s*)\w+", r"\1None", config_text)
-    if n:
-        return text
-    # no album_art section: add one after the opening parenthesis of the config
-    return re.sub(
-        r"^(\s*#!\[[^\]]*\]\s*)*\(",
-        lambda m: m.group(0) + "\n    album_art: (method: None),",
-        text,
-        count=1,
-        flags=re.M,
-    )
+    return text if n else add_setting(text, "album_art: (method: None)")
 
 
-def panel_layout(config_text, has_cava):
+def pipewire_running(env=None):
+    env = os.environ if env is None else env
+    runtime = env.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
+    return (Path(runtime) / "pipewire-0").exists()
+
+
+def with_cava_input(config_text, pipewire):
+    """rmpc's default cava input is PulseAudio with an empty source, which cava
+    rejects. Capture the default output instead, unless the config sets cava."""
+    if re.search(r"^\s*cava\s*:", config_text, re.M):
+        return config_text
+    method = "Pipewire" if pipewire else "Pulse"
+    return add_setting(config_text, f'cava: (input: (method: {method}, source: "auto"))')
+
+
+def panel_layout(config_text, has_cava, pipewire=True):
     """Album art's pane shows the Cava audio visualizer instead (or nothing
     when cava isn't installed), and album art itself is switched off."""
     text = without_album_art(config_text)
+    if has_cava:
+        text = with_cava_input(text, pipewire)
     return re.sub(r"Pane\(\s*AlbumArt\s*\)", "Pane(Cava)" if has_cava else "Pane(Empty())", text)
 
 
@@ -213,7 +229,7 @@ def panel_rmpc_config(env=None):
         text = out
     dest = Path(env.get("XDG_CACHE_HOME") or home / ".cache") / "komamusicthing" / "rmpc.ron"
     dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_text(panel_layout(text, shutil.which("cava") is not None))
+    dest.write_text(panel_layout(text, shutil.which("cava") is not None, pipewire_running(env)))
     return dest
 
 

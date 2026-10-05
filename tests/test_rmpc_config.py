@@ -74,3 +74,30 @@ def test_without_cava_the_space_is_left_empty(music):
     out = music.panel_layout(LAYOUT, has_cava=False)
     assert "Pane(Empty())" in out
     assert "Cava" not in out
+
+
+def test_cava_captures_pipewires_default_output(music):
+    out = music.panel_layout(LAYOUT, has_cava=True, pipewire=True)
+    assert 'cava: (input: (method: Pipewire, source: "auto")),' in out
+
+
+def test_cava_on_pulseaudio(music):
+    out = music.panel_layout(LAYOUT, has_cava=True, pipewire=False)
+    assert 'method: Pulse, source: "auto"' in out
+
+
+def test_users_own_cava_settings_win(music):
+    mine = LAYOUT.replace("(\n", '(\n    cava: (input: (method: Fifo, source: "/tmp/mpd.fifo")),\n', 1)
+    out = music.panel_layout(mine, has_cava=True)
+    assert out.count("cava:") == 1
+    assert "/tmp/mpd.fifo" in out
+
+
+def test_no_cava_section_without_cava(music):
+    assert "cava:" not in music.panel_layout(LAYOUT, has_cava=False)
+
+
+def test_pipewire_detection(music, tmp_path):
+    assert not music.pipewire_running({"XDG_RUNTIME_DIR": str(tmp_path)})
+    (tmp_path / "pipewire-0").touch()
+    assert music.pipewire_running({"XDG_RUNTIME_DIR": str(tmp_path)})
