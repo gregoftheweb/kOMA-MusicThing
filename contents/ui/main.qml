@@ -19,6 +19,72 @@ PlasmoidItem {
 
     readonly property string cli: decodeURIComponent(Qt.resolvedUrl("../code/komamusic").toString().replace("file://", ""))
 
+    readonly property string setupCli: decodeURIComponent(Qt.resolvedUrl("../code/music_setup.py").toString().replace("file://", ""))
+    property var setupInfo: ({})
+    property bool setupVisible: false
+    property bool setupBusy: false
+    property bool setupChecked: false
+    property bool setupRefreshing: false
+    property string setupMessage: ""
+    property bool setupError: false
+    function refreshSetup() {
+        if (setupRefreshing)
+            return
+        setupRefreshing = true
+        call(["status"], function (code, out) {
+            setupRefreshing = false
+            var result = Model.parseJson(out)
+            if (code !== 0 || !result || result.error)
+                return
+            setupInfo = result
+            if (!setupChecked) {
+                setupChecked = true
+                if (!(result.dependencies || []).filter(d => d.name === "mpd" || d.name === "rmpc" || d.name === "cava").every(d => d.ok) || (!result.connected && !result.mpdConfigured))
+                    setupVisible = true
+            }
+        }, setupCli)
+    }
+    function setupAction(args) {
+        if (setupBusy)
+            return
+        setupBusy = true
+        setupMessage = ""
+        call(args, function (code, out, err) {
+            setupBusy = false
+            var result = Model.parseJson(out)
+            setupError = code !== 0 || !result || !!result.error
+            setupMessage = result ? (result.error || result.message || "Done") : (err.trim() || "Setup failed")
+            if (result && result.started)
+                startedMpd = true
+            refreshSetup()
+            refresh()
+        }, setupCli)
+    }
+    function installSetup(component) {
+        if (setupBusy)
+            return
+        setupBusy = true
+        setupMessage = "Follow the package installer in the terminal, then return here."
+        setupError = false
+        var command = "konsole --hold -e python3 " + shellQuote(setupCli) + " install " + shellQuote(component) + " # setup-" + Date.now()
+        var cbs = callbacks
+        cbs[command] = function (code, out, err) {
+            setupBusy = false
+            setupError = code !== 0
+            setupMessage = code === 0 ? "Installer closed. Package status refreshed." : (err.trim() || "Installer failed. Refresh setup and try again.")
+            refreshSetup()
+        }
+        callbacks = cbs
+        runner.connectSource(command)
+    }
+    Timer {
+        interval: 5000
+        running: root.expanded && root.setupVisible
+        repeat: true
+        onTriggered: root.refreshSetup()
+    }
+    Component.onCompleted: refreshSetup()
+
     property var info: ({})
     property string error: ""
     property bool full: false // mini view or rmpc view
@@ -30,8 +96,8 @@ PlasmoidItem {
     switchWidth: Kirigami.Units.gridUnit * 12
     switchHeight: Kirigami.Units.gridUnit * 4
     Plasmoid.icon: Model.stateIcon(info)
-    toolTipMainText: Model.tooltip(info)
-    toolTipSubText: error || (Model.hasSong(info) ? Model.formatTime(info.elapsed) + " / " + Model.formatTime(info.duration) : "")
+    toolTipMainText: mpdUp ? Model.tooltip(info) : "kOMA Music Thing"
+    toolTipSubText: error || (!mpdUp ? "MPD is not running. Open kOMA Music Thing to set it up." : (Model.hasSong(info) ? Model.formatTime(info.elapsed) + " / " + Model.formatTime(info.duration) : ""))
 
     function shellQuote(s) {
         return "'" + String(s).replace(/'/g, "'\\''") + "'"
@@ -39,8 +105,8 @@ PlasmoidItem {
 
     // ---------------------------------------------------------------- CLI calls
     property var callbacks: ({})
-    function call(args, callback) {
-        var source = "python3 " + shellQuote(cli) + " " + args.map(shellQuote).join(" ") + " # " + Date.now() + Math.random()
+    function call(args, callback, program = cli) {
+        var source = "python3 " + shellQuote(program) + " " + args.map(shellQuote).join(" ") + " # " + Date.now() + Math.random()
         var cbs = callbacks
         cbs[source] = callback
         callbacks = cbs

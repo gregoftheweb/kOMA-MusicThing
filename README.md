@@ -12,6 +12,18 @@ It's part of kOMA (KDE + Omarchy), a set of add-ons that make Plasma look and dr
 - **Cava visualizer**: in the popup, rmpc shows cava's audio bars where album art would be (the popup's terminal can't draw images). Standalone rmpc keeps your album art: the widget runs rmpc with its own copy of your config, regenerated each time.
 - **Start rmpc**: if MPD isn't running, the widget shows one button that starts `mpd.service`, waits for MPD and opens rmpc. If the widget started MPD, quitting rmpc stops it again; an MPD you started yourself is left alone.
 
+## Guided setup
+
+Open the widget’s **Setup** gear to install and configure a new player. Missing MPD, rmpc, or cava opens setup automatically.
+
+1. **Install:** separate buttons for MPD, rmpc, and cava. The cava installer also installs the Qt 6 embedded terminal. On Arch-based systems, buttons open Konsole with the standard `sudo pacman` transaction, password prompt, and progress. Close the installer when finished; status refreshes automatically.
+2. **Configure:** browse to an existing music folder, then configure MPD and rmpc. New MPD setups listen on localhost and use the installed PipeWire or PulseAudio output. rmpc configuration comes from its own installed defaults; the panel’s existing config adapter adds cava’s sound graph automatically.
+3. **Start listening:** start MPD and request a library scan, then open the music browser. Scanning large libraries continues in the background; choose music once it appears.
+
+Existing MPD and rmpc configurations are never overwritten. An already running MPD server or an environment-selected remote server is preserved. MPD starts on demand; setup does not enable it at login or change system services.
+
+On other distributions, install MPD, rmpc, cava, and a Qt 6 QMLTermWidget package using the distribution’s package manager or upstream installation instructions. Then return to the widget for configuration and connection checks. A distribution-specific guide will accompany the product page.
+
 ## Requirements
 
 - KDE Plasma 6
@@ -32,7 +44,7 @@ From the KDE Store: right-click the panel, **Add or Manage Widgets**, **Get New 
 From source:
 
 ```sh
-git clone https://github.com/columbiafoundry/kOMA-MusicThing
+git clone https://github.com/gregoftheweb/kOMA-MusicThing
 cd kOMA-MusicThing
 bin/install              # the widget, the komamusic command in ~/.local/bin, and places it on your panels
 bin/install --no-place   # the same, without touching your panels

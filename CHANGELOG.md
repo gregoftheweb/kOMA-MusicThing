@@ -2,6 +2,15 @@
 
 All notable changes to kOMA Music Thing. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.2.0] - 2026-10-05
+
+### Added
+
+- Guided Setup panel with installation buttons for MPD, rmpc, cava, and the embedded terminal on Arch-based systems.
+- Music-folder picker, non-destructive MPD and rmpc configuration, desktop audio selection, and a start-and-scan step.
+- Existing and remote MPD setups are preserved. New configuration files are private and never replace existing files.
+- Setup tests covering configuration preservation, missing dependencies, fixed package commands, and the QML setup panel.
+
 ## [0.1.0] - 2026-10-04
 
 ### Added
@@ -16,4 +25,4 @@ All notable changes to kOMA Music Thing. The format follows [Keep a Changelog](h
 - `komamusic` CLI: `status`, `toggle`, `play`, `pause`, `next`, `prev`, `start-mpd`, `stop-mpd`; a stdlib MPD protocol client (TCP or socket, optional password) that finds MPD like rmpc does.
 - Tests (pytest against a fake MPD server speaking the real protocol, QML unit tests), linting and formatting gates (`make check`), pre-commit hook, `make package`.
 
-[0.1.0]: https://github.com/columbiafoundry/kOMA-MusicThing/releases/tag/v0.1.0
+[0.1.0]: https://github.com/gregoftheweb/kOMA-MusicThing/releases/tag/v0.1.0

@@ -8,6 +8,6 @@ version=$(python3 -c 'import json; print(json.load(open("metadata.json"))["KPlug
 out="dist/$id-$version.plasmoid"
 mkdir -p dist
 rm -f "$out"
-# only what the package needs, as tracked by git (no dev files, no stray edits)
-git ls-files -- metadata.json contents LICENSE | zip -q -X "$out" -@
+# Include new package files before they are committed, but exclude ignored files.
+git ls-files --cached --others --exclude-standard -- metadata.json contents LICENSE | zip -q -X "$out" -@
 echo "$out ($(du -h "$out" | cut -f1))"

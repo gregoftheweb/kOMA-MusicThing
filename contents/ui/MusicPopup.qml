@@ -23,15 +23,26 @@ PlasmaExtras.Representation {
     readonly property real fullHeight: Kirigami.Units.gridUnit * 30
 
     // fixed sizes (min = max) so Plasma resizes the popup when switching views
-    Layout.minimumWidth: host.full ? fullWidth : Kirigami.Units.gridUnit * 20
+    Layout.minimumWidth: host.setupVisible ? Kirigami.Units.gridUnit * 28 : host.full ? fullWidth : Kirigami.Units.gridUnit * 20
     Layout.maximumWidth: Layout.minimumWidth
     Layout.preferredWidth: Layout.minimumWidth
-    Layout.minimumHeight: host.full ? fullHeight : miniHeight
+    Layout.minimumHeight: host.setupVisible ? Kirigami.Units.gridUnit * 34 : host.full ? fullHeight : miniHeight
     Layout.maximumHeight: Layout.minimumHeight
     Layout.preferredHeight: Layout.minimumHeight
     collapseMarginsHint: true
 
+    Loader {
+        anchors.fill: parent
+        anchors.margins: Kirigami.Units.largeSpacing
+        active: popup.host.setupVisible
+        sourceComponent: Component {
+            MusicSetup {
+                host: popup.host
+            }
+        }
+    }
     ColumnLayout {
+        visible: !popup.host.setupVisible
         anchors.fill: parent
         spacing: 0
 
@@ -42,6 +53,24 @@ PlasmaExtras.Representation {
             Layout.margins: Kirigami.Units.largeSpacing
             spacing: Kirigami.Units.smallSpacing
 
+            RowLayout {
+                Layout.fillWidth: true
+                PlasmaComponents.Label {
+                    text: "kOMA Music Thing"
+                    Layout.fillWidth: true
+                    opacity: 0.7
+                }
+                PlasmaComponents.ToolButton {
+                    icon.name: "configure"
+                    onClicked: {
+                        popup.host.setupVisible = true
+                        popup.host.refreshSetup()
+                    }
+                    PlasmaComponents.ToolTip {
+                        text: "Set up MPD, rmpc, and cava"
+                    }
+                }
+            }
             RowLayout {  // MPD down: one button gets everything going
                 Layout.fillWidth: true
                 visible: !popup.host.mpdUp
