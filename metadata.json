@@ -1,0 +1,14 @@
+{
+  "KPackageStructure": "Plasma/Applet",
+  "KPlugin": {
+    "Authors": [{ "Name": "Columbia Foundry", "Email": "" }],
+    "Category": "Multimedia",
+    "Description": "Compact MPD player: play and skip in the panel, expand to rmpc running right inside the popup to pick music and build the queue",
+    "Icon": "media-playback-start",
+    "Id": "com.columbiafoundry.komamusicthing",
+    "License": "MIT",
+    "Name": "kOMA Music Thing",
+    "Version": "0.1"
+  },
+  "X-Plasma-API-Minimum-Version": "6.0"
+}

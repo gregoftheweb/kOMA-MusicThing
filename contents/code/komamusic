@@ -1,0 +1,325 @@
+#!/usr/bin/env python3
+"""komamusic — the backend of kOMA Music Thing: a tiny MPD client.
+
+  komamusic status [--json]   now playing: state, title, artist, album, position
+  komamusic toggle            play, or pause if playing
+  komamusic play | pause | next | prev
+  komamusic start-mpd [--json]  start the mpd systemd user service if MPD isn't
+                              answering, and wait (up to 5 s) until it is
+  komamusic stop-mpd          stop the mpd systemd user service
+  komamusic stop              stop playback
+  komamusic rmpc              run rmpc for the panel: your rmpc config with album
+                              art off (the popup's terminal can't draw images) and
+                              the Cava visualizer in album art's place
+
+Talks to MPD directly over its socket (no mpc needed). The server is taken
+from MPD_HOST / MPD_PORT (MPD_HOST may be "password@host" or a socket path),
+then rmpc's config (address), then localhost:6600.
+"""
+
+import argparse
+import json
+import os
+import re
+import shutil
+import socket
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+DEFAULT = ("localhost", 6600)
+TIMEOUT = 3.0
+
+
+class Failed(Exception):
+    pass
+
+
+# ---- where is MPD -------------------------------------------------------------
+
+
+def rmpc_address(config_text):
+    """`address: "host:port"` (or a socket path) from rmpc's config.ron."""
+    m = re.search(r'^\s*address:\s*"([^"]+)"', config_text or "", re.M)
+    return m.group(1) if m else None
+
+
+def parse_address(value, port_env=None):
+    """'host:port', 'host', '/path/to/socket' or 'password@host' ->
+    (host or socket path, port, password)."""
+    password = None
+    if value and "@" in value and not value.startswith("/"):
+        password, _, value = value.rpartition("@")
+    if not value:
+        host, port = DEFAULT
+    elif value.startswith(("/", "~")):
+        return os.path.expanduser(value), None, password
+    elif value.count(":") == 1:
+        host, _, p = value.partition(":")
+        port = int(p) if p.isdigit() else DEFAULT[1]
+    else:
+        host, port = value, DEFAULT[1]
+    if port_env and port_env.isdigit():
+        port = int(port_env)
+    return host, port, password
+
+
+def server(env=None, rmpc_config=None):
+    env = os.environ if env is None else env
+    if env.get("MPD_HOST"):
+        return parse_address(env["MPD_HOST"], env.get("MPD_PORT"))
+    if rmpc_config is None:
+        cfg = Path(env.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "rmpc" / "config.ron"
+        rmpc_config = cfg.read_text() if cfg.is_file() else ""
+    addr = rmpc_address(rmpc_config)
+    return parse_address(addr, env.get("MPD_PORT")) if addr else (*DEFAULT, None)
+
+
+# ---- the MPD protocol ---------------------------------------------------------
+
+
+class MPD:
+    """Minimal MPD protocol client: one command at a time, key/value replies."""
+
+    def __init__(self, host, port, password=None, timeout=TIMEOUT):
+        try:
+            if port is None:
+                self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                self.sock.settimeout(timeout)
+                self.sock.connect(host)
+            else:
+                self.sock = socket.create_connection((host, port), timeout=timeout)
+        except OSError as e:
+            where = host if port is None else f"{host}:{port}"
+            raise Failed(f"can't reach MPD at {where}: {e.strerror or e}") from e
+        self.file = self.sock.makefile("rwb")
+        greeting = self.file.readline().decode("utf-8", "replace")
+        if not greeting.startswith("OK MPD"):
+            raise Failed(f"not an MPD server: {greeting.strip()!r}")
+        if password:
+            self.command("password", password)
+
+    def command(self, name, *args):
+        quoted = " ".join('"' + str(a).replace("\\", "\\\\").replace('"', '\\"') + '"' for a in args)
+        self.file.write(f"{name} {quoted}".strip().encode() + b"\n")
+        self.file.flush()
+        pairs = {}
+        while True:
+            line = self.file.readline().decode("utf-8", "replace").rstrip("\n")
+            if line == "OK":
+                return pairs
+            if line.startswith("ACK"):
+                raise Failed("MPD: " + re.sub(r"^ACK \[[^\]]*\] \{[^}]*\} ", "", line))
+            if not line:
+                raise Failed("MPD closed the connection")
+            key, _, value = line.partition(": ")
+            pairs.setdefault(key, value)
+
+    def close(self):
+        try:
+            self.file.close()
+            self.sock.close()
+        except OSError:
+            pass
+
+
+def connect():
+    host, port, password = server()
+    return MPD(host, port, password)
+
+
+# ---- starting and stopping MPD (as the user's rmpcs script does) ---------------
+
+
+def run(cmd, timeout=15):
+    """Run a command; return (returncode, stdout, stderr). Tests replace this."""
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False)
+    except FileNotFoundError:
+        return 127, "", f"{cmd[0]}: not found"
+    except subprocess.TimeoutExpired:
+        return 124, "", f"{cmd[0]}: timed out"
+    return p.returncode, p.stdout, p.stderr
+
+
+def reachable():
+    try:
+        connect().close()
+        return True
+    except Failed:
+        return False
+
+
+def start_mpd(wait=5.0, sleep=time.sleep, clock=time.monotonic):
+    """{"started": True} if we started it, {"started": False} if it was already up."""
+    if reachable():
+        return {"started": False}
+    rc, _, err = run(["systemctl", "--user", "start", "mpd.service"])
+    if rc != 0:
+        raise Failed("couldn't start mpd.service: " + (err.strip() or f"systemctl exited {rc}"))
+    deadline = clock() + wait
+    while clock() < deadline:
+        if reachable():
+            return {"started": True}
+        sleep(0.1)
+    raise Failed("mpd.service started but MPD isn't answering")
+
+
+def stop_mpd():
+    rc, _, err = run(["systemctl", "--user", "stop", "mpd.service"])
+    if rc != 0:
+        raise Failed("couldn't stop mpd.service: " + (err.strip() or f"systemctl exited {rc}"))
+    return {"stopped": True}
+
+
+# ---- rmpc inside the panel ----------------------------------------------------------
+
+
+def without_album_art(config_text):
+    """The rmpc config with album_art's method set to None: the popup's terminal
+    (QMLTermWidget) can't show Sixel/Kitty images and would print their raw data."""
+    text, n = re.subn(r"(album_art\s*:\s*\(\s*method\s*:\s*)\w+", r"\1None", config_text)
+    if n:
+        return text
+    # no album_art section: add one after the opening parenthesis of the config
+    return re.sub(
+        r"^(\s*#!\[[^\]]*\]\s*)*\(",
+        lambda m: m.group(0) + "\n    album_art: (method: None),",
+        text,
+        count=1,
+        flags=re.M,
+    )
+
+
+def panel_layout(config_text, has_cava):
+    """Album art's pane shows the Cava audio visualizer instead (or nothing
+    when cava isn't installed), and album art itself is switched off."""
+    text = without_album_art(config_text)
+    return re.sub(r"Pane\(\s*AlbumArt\s*\)", "Pane(Cava)" if has_cava else "Pane(Empty())", text)
+
+
+def panel_rmpc_config(env=None):
+    env = os.environ if env is None else env
+    home = Path.home()
+    src = Path(env.get("XDG_CONFIG_HOME") or home / ".config") / "rmpc" / "config.ron"
+    if src.is_file():
+        text = src.read_text()
+    else:
+        rc, out, err = run(["rmpc", "config"])
+        if rc != 0:
+            raise Failed("couldn't read rmpc's default config: " + (err.strip() or f"rmpc exited {rc}"))
+        text = out
+    dest = Path(env.get("XDG_CACHE_HOME") or home / ".cache") / "komamusicthing" / "rmpc.ron"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(panel_layout(text, shutil.which("cava") is not None))
+    return dest
+
+
+def exec_rmpc():
+    os.execvp("rmpc", ["rmpc", "--config", str(panel_rmpc_config())])
+
+
+# ---- commands -----------------------------------------------------------------
+
+
+def to_float(v):
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def now_playing(status, song):
+    """Combine `status` and `currentsong` into what the widget shows."""
+    elapsed, duration = (status.get("time") or "0:0").partition(":")[::2]
+    title = song.get("Title") or Path(song.get("file", "")).stem
+    return {
+        "state": status.get("state", "stop"),
+        "title": title,
+        "artist": song.get("Artist") or song.get("AlbumArtist") or "",
+        "album": song.get("Album") or "",
+        "file": song.get("file", ""),
+        "elapsed": to_float(status.get("elapsed") or elapsed),
+        "duration": to_float(status.get("duration") or duration),
+        "position": int(status["song"]) + 1 if status.get("song", "").isdigit() else 0,
+        "queueLength": int(status.get("playlistlength") or 0),
+        "volume": int(status["volume"]) if status.get("volume", "").lstrip("-").isdigit() else None,
+    }
+
+
+def status():
+    mpd = connect()
+    try:
+        return now_playing(mpd.command("status"), mpd.command("currentsong"))
+    finally:
+        mpd.close()
+
+
+def control(action):
+    mpd = connect()
+    try:
+        st = mpd.command("status")
+        if action == "toggle":
+            if st.get("state") == "play":
+                mpd.command("pause", 1)
+            else:
+                if not int(st.get("playlistlength") or 0):
+                    raise Failed("the queue is empty: expand to pick music in rmpc")
+                mpd.command("play") if st.get("state") == "stop" else mpd.command("pause", 0)
+        elif action == "play":
+            mpd.command("play")
+        elif action == "pause":
+            mpd.command("pause", 1)
+        elif action == "next":
+            mpd.command("next")
+        elif action == "prev":
+            mpd.command("previous")
+        elif action == "stop":
+            mpd.command("stop")
+        return now_playing(mpd.command("status"), mpd.command("currentsong"))
+    finally:
+        mpd.close()
+
+
+def fmt_time(seconds):
+    s = int(seconds)
+    return f"{s // 60}:{s % 60:02d}"
+
+
+def main():
+    ap = argparse.ArgumentParser(prog="komamusic", description=__doc__.split("\n\n")[0])
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    for name in ("status", "toggle", "play", "pause", "next", "prev", "stop", "start-mpd", "stop-mpd", "rmpc"):
+        sub.add_parser(name).add_argument("--json", action="store_true")
+    a = ap.parse_args()
+    try:
+        if a.cmd == "rmpc":
+            exec_rmpc()
+        if a.cmd in ("start-mpd", "stop-mpd"):
+            r = start_mpd() if a.cmd == "start-mpd" else stop_mpd()
+            if a.json:
+                print(json.dumps(r))
+            elif "started" in r:
+                print("started MPD" if r["started"] else "MPD was already running")
+            else:
+                print("stopped MPD")
+            return
+        info = status() if a.cmd == "status" else control(a.cmd)
+    except Failed as e:
+        print(f"komamusic: {e}", file=sys.stderr)
+        sys.exit(1)
+    if a.json:
+        print(json.dumps(info))
+    elif info["state"] == "stop" and not info["file"]:
+        print("Stopped" + (f" ({info['queueLength']} in queue)" if info["queueLength"] else ", queue empty"))
+    else:
+        who = f"{info['artist']} - " if info["artist"] else ""
+        print(
+            f"[{info['state']}] {who}{info['title']}  "
+            f"{fmt_time(info['elapsed'])}/{fmt_time(info['duration'])}  #{info['position']}/{info['queueLength']}"
+        )
+
+
+if __name__ == "__main__":
+    main()
