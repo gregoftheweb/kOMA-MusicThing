@@ -8,9 +8,9 @@ It's part of kOMA (KDE + Omarchy), a set of add-ons that make Plasma look and dr
 
 - **Panel icon** shows whether MPD is playing; hover for the song, middle-click to play/pause, scroll to skip.
 - **Mini view**: title, artist, album, progress, play/pause, skip, expand.
-- **rmpc inside the popup**: a real terminal (QMLTermWidget) in the expanded view. Collapsing hides it without stopping it, so rmpc keeps its place. Quit rmpc with `q` and the popup collapses.
+- **rmpc inside the popup**: a real terminal (QMLTermWidget) in the expanded view. Closing or collapsing releases rmpc and its visualizer while MPD keeps playing. Expanding again restores the last tab (requires rmpc remote commands, tested with 0.11.0); folder selection and scroll position reset. Every panel opening starts with the mini view. Quit rmpc with `q` and the popup collapses.
 - **Cava visualizer**: in the popup, rmpc shows cava's audio bars where album art would be (the popup's terminal can't draw images). Standalone rmpc keeps your album art: the widget runs rmpc with its own copy of your config, regenerated each time.
-- **Start rmpc**: if MPD isn't running, the widget shows one button that starts `mpd.service`, waits for MPD and opens rmpc. If the widget started MPD, quitting rmpc stops it again; an MPD you started yourself is left alone.
+- **Start MPD**: if MPD isn't running, the widget shows one button that starts `mpd.service`, waits for MPD and shows the mini player. Expand when you want to browse. If the widget started MPD, quitting rmpc stops it again; an MPD you started yourself is left alone.
 
 ## Guided setup
 

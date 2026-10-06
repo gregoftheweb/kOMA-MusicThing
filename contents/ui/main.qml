@@ -88,7 +88,7 @@ PlasmoidItem {
     property var info: ({})
     property string error: ""
     property bool full: false // mini view or rmpc view
-    property bool rmpcRunning: false // rmpc's terminal exists (kept while collapsed)
+    property string browserTab: "" // bookmark survives popup recreation
     property bool startedMpd: false // we started mpd.service, so we stop it when rmpc quits
     property bool starting: false
     readonly property bool mpdUp: error === "" && info.state !== undefined
@@ -143,19 +143,16 @@ PlasmoidItem {
             if (r.started)
                 startedMpd = true
             error = ""
-            openRmpc()
             refresh()
         })
     }
     function openRmpc() {
-        rmpcRunning = true
         full = true
     }
     // rmpc quit (q): collapse and stop playback (as the user's rmpc shell
     // wrapper does with mpc stop), and stop MPD if we were the ones who started it
     function rmpcQuit() {
         full = false
-        rmpcRunning = false
         call(["stop"], function () {})
         if (startedMpd) {
             startedMpd = false
@@ -181,12 +178,22 @@ PlasmoidItem {
     }
 
     function refresh() {
-        call(["status", "--json"], handle)
+        playerRequests.refresh()
     }
 
     // play/pause, next, prev: apply and show the new state at once
     function send(action) {
-        call([action, "--json"], handle)
+        playerRequests.send(action)
+    }
+
+    PlayerRequests {
+        id: playerRequests
+        execute: (args, callback) => root.call(args, callback)
+        onResponse: (code, output, error) => root.handle(code, output, error)
+    }
+
+    PopupState {
+        host: root
     }
 
     // MPD is local: every second while open, every 5 s for the panel icon

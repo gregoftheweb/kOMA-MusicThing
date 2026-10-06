@@ -237,6 +237,29 @@ def exec_rmpc():
     os.execvp("rmpc", ["rmpc", "--config", str(panel_rmpc_config())])
 
 
+def browser_tab(pid, tab=None):
+    """Target one embedded client; bound startup retries and remote hangs."""
+    if pid <= 0:
+        raise Failed("invalid browser PID")
+    deadline = time.monotonic() + 2
+    while True:
+        args = ["rmpc", "remote", "--pid", str(pid)]
+        args += ["query", "activetab"] if tab is None else ["switchtab", tab]
+        try:
+            result = subprocess.run(args, capture_output=True, text=True, timeout=0.4, check=False)
+            if result.returncode == 0:
+                if tab is not None:
+                    return {}
+                value = json.loads(result.stdout)
+                if isinstance(value.get("activetab"), str):
+                    return {"activetab": value["activetab"]}
+        except (subprocess.TimeoutExpired, OSError, ValueError, AttributeError):
+            pass
+        if tab is None or time.monotonic() >= deadline:
+            raise Failed("browser tab unavailable")
+        time.sleep(0.1)
+
+
 # ---- dependencies -----------------------------------------------------------------
 
 # name -> (Arch package, required?, what it's for)
@@ -352,8 +375,14 @@ def main():
     commands = ("status", "toggle", "play", "pause", "next", "prev", "stop", "start-mpd", "stop-mpd", "rmpc", "doctor")
     for name in commands:
         sub.add_parser(name).add_argument("--json", action="store_true")
+    browser = sub.add_parser("browser-tab")
+    browser.add_argument("pid", type=int)
+    browser.add_argument("tab", nargs="?")
     a = ap.parse_args()
     try:
+        if a.cmd == "browser-tab":
+            print(json.dumps(browser_tab(a.pid, a.tab)))
+            return
         if a.cmd == "rmpc":
             exec_rmpc()
         if a.cmd == "doctor":

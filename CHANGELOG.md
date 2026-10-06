@@ -2,6 +2,20 @@
 
 All notable changes to kOMA Music Thing. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.2.1] - 2026-10-06
+
+### Changed
+
+- Every panel opening starts in the mini player. Only expanding starts the embedded browser.
+- Closing, collapsing, or entering setup releases the browser and visualizer without stopping MPD playback.
+- Remember the last browser tab for the next expansion using bounded, PID-targeted rmpc remote commands; no background bookmark polling.
+
+### Fixed
+
+- Allow only one recurring MPD status request at a time, so a slow server cannot accumulate polling processes and callbacks.
+- Ignore status responses made stale by playback controls and refresh the final server state after controls finish.
+- Add QML regression tests for slow polling, failures, and responses completing out of order.
+
 ## [0.2.0] - 2026-10-05
 
 ### Added

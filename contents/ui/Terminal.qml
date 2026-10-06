@@ -14,7 +14,25 @@ QMLTermWidget {
     id: terminal
 
     // rmpc quit (q): the popup collapses (and stops MPD if it started it)
+    property var execute
+    property string rememberedTab: ""
     signal rmpcExited
+
+    function captureTab(callback) {
+        execute(["browser-tab", String(session.getShellPID())], function (code, out) {
+            var tab = ""
+            try {
+                if (code === 0)
+                    tab = JSON.parse(out).activetab || ""
+            } catch (error) {}
+            callback(tab)
+        })
+    }
+
+    function restoreTab() {
+        if (rememberedTab)
+            execute(["browser-tab", String(session.getShellPID()), rememberedTab], function () {})
+    }
 
     font.family: Kirigami.Theme.fixedWidthFont.family
     font.pointSize: Kirigami.Theme.fixedWidthFont.pointSize
@@ -29,5 +47,9 @@ QMLTermWidget {
         onFinished: terminal.rmpcExited()
     }
 
-    Component.onCompleted: session.startShellProgram()
+    Component.onCompleted: {
+        session.startShellProgram()
+        // BrowserView assigns the bookmark and executor after Loader creation.
+        Qt.callLater(restoreTab)
+    }
 }

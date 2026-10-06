@@ -1,7 +1,7 @@
 /*
     The kOMA Music Thing popup: a mini player, and an expanded view with rmpc
-    running inside the popup. The terminal is created on first expand and kept
-    (hidden) while collapsed, so rmpc keeps its place between expands.
+    running inside the popup. The terminal exists only while the full player
+    is open; collapsing releases it without stopping MPD playback.
 */
 pragma ComponentBehavior: Bound
 
@@ -99,7 +99,7 @@ PlasmaExtras.Representation {
                     Layout.preferredHeight: Kirigami.Units.iconSizes.medium
                 }
                 PlasmaComponents.Button {
-                    text: "Start rmpc"
+                    text: "Start MPD"
                     icon.name: "media-playback-start"
                     enabled: !popup.host.starting
                     onClicked: popup.host.startRmpc()
@@ -180,35 +180,18 @@ PlasmaExtras.Representation {
             Layout.fillHeight: true
             visible: popup.host.full
 
-            Loader {
-                id: terminal
+            BrowserView {
+                id: browser
                 anchors.fill: parent
                 anchors.margins: Kirigami.Units.smallSpacing
-                // rmpc lives from expand until it quits; collapsing only hides it
-                active: popup.host.rmpcRunning
-                source: "Terminal.qml"
-                onLoaded: (item as Item)?.forceActiveFocus()
-            }
-            Connections {
-                target: terminal.item
-                ignoreUnknownSignals: true
-                function onRmpcExited() {
-                    popup.host.rmpcQuit()
-                }
-            }
-            Connections {
-                target: popup.host
-                function onFullChanged() {
-                    if (popup.host.full && terminal.item)
-                        (terminal.item as Item)?.forceActiveFocus()
-                }
+                host: popup.host
             }
 
             // without QMLTermWidget: rmpc in a terminal window instead
             PlasmaExtras.PlaceholderMessage {
                 anchors.centerIn: parent
                 width: parent.width - Kirigami.Units.gridUnit * 4
-                visible: terminal.status === Loader.Error
+                visible: browser.unavailable
                 iconName: "utilities-terminal"
                 text: "rmpc can't run inside the panel here"
                 explanation: "Install QMLTermWidget (Arch: qmltermwidget) to run rmpc right in this popup. Until then it opens in a terminal window."
