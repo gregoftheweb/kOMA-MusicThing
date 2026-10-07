@@ -1,5 +1,7 @@
 """Status and transport controls against a fake MPD server."""
 
+import threading
+
 import pytest
 
 
@@ -66,3 +68,14 @@ def test_arguments_are_quoted(music, mpd):
     m.command("find", 'title "quoted"', "back\\slash")
     m.close()
     assert mpd.commands[-1] == 'find "title \\"quoted\\"" "back\\\\slash"'
+
+
+def test_wait_returns_when_playback_changes(music, mpd):
+    waiting = threading.Timer(0.2, music.control, args=("next",))
+    waiting.start()
+    assert music.wait(timeout=3) == "player"
+    assert 'idle "player" "mixer" "playlist" "options"' in mpd.commands
+
+
+def test_wait_times_out_quietly(music, mpd):
+    assert music.wait(timeout=0.2) is None

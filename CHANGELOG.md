@@ -2,6 +2,20 @@
 
 All notable changes to kOMA Music Thing. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] - 2026-10-07
+
+### Changed
+
+- While the popup is closed, the widget waits for MPD to report a change (`komamusic wait`, MPD's `idle`) instead of asking for status every 5 seconds. Hovering the icon refreshes the tooltip's elapsed time.
+
+### Added
+
+- `komamusic wait [--timeout SECONDS] [--json]`: block until playback, volume, the queue, or playback options change.
+
+### Fixed
+
+- plasmashell no longer slows down the longer it runs. Commands ran under a new name every time (`cmd # Date.now()`), and Plasma's command engine never forgets a name: every widget's command runner on the engine rebuilds a property for each name ever used on every removal, so CPU and memory grew all day until plasmashell pinned a core. Commands now keep one fixed name and run through the shared `CommandQueue`, which serializes repeat runs of the same command.
+
 ## [0.2.1] - 2026-10-06
 
 ### Changed

@@ -11,7 +11,6 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import org.kde.kirigami as Kirigami
 import org.kde.plasma.plasmoid
-import org.kde.plasma.plasma5support as P5Support
 import "Model.js" as Model
 
 PlasmoidItem {
@@ -66,16 +65,12 @@ PlasmoidItem {
         setupBusy = true
         setupMessage = "Follow the package installer in the terminal, then return here."
         setupError = false
-        var command = "konsole --hold -e python3 " + shellQuote(setupCli) + " install " + shellQuote(component) + " # setup-" + Date.now()
-        var cbs = callbacks
-        cbs[command] = function (code, out, err) {
+        commands.run("konsole --hold -e python3 " + shellQuote(setupCli) + " install " + shellQuote(component), function (code, out, err) {
             setupBusy = false
             setupError = code !== 0
             setupMessage = code === 0 ? "Installer closed. Package status refreshed." : (err.trim() || "Installer failed. Refresh setup and try again.")
             refreshSetup()
-        }
-        callbacks = cbs
-        runner.connectSource(command)
+        })
     }
     Timer {
         interval: 5000
@@ -104,28 +99,12 @@ PlasmoidItem {
     }
 
     // ---------------------------------------------------------------- CLI calls
-    property var callbacks: ({})
     function call(args, callback, program = cli) {
-        var source = "python3 " + shellQuote(program) + " " + args.map(shellQuote).join(" ") + " # " + Date.now() + Math.random()
-        var cbs = callbacks
-        cbs[source] = callback
-        callbacks = cbs
-        runner.connectSource(source)
+        commands.run("python3 " + shellQuote(program) + " " + args.map(shellQuote).join(" "), callback)
     }
 
-    P5Support.DataSource {
-        id: runner
-        engine: "executable"
-        connectedSources: []
-        onNewData: function (source, data) {
-            disconnectSource(source)
-            var cb = root.callbacks[source]
-            var cbs = root.callbacks
-            delete cbs[source]
-            root.callbacks = cbs
-            if (cb)
-                cb(data["exit code"], String(data.stdout || ""), String(data.stderr || ""))
-        }
+    CommandQueue {
+        id: commands
     }
 
     // Start rmpc: like the rmpcs script, bring MPD up first if it isn't
@@ -164,7 +143,7 @@ PlasmoidItem {
 
     // a command whose output nobody needs (opening rmpc in a terminal window)
     function runDetached(command) {
-        runner.connectSource(command + " # " + Date.now())
+        commands.run(command)
     }
 
     function handle(code, out, err) {
@@ -196,13 +175,30 @@ PlasmoidItem {
         host: root
     }
 
-    // MPD is local: every second while open, every 5 s for the panel icon
+    // Open: every second, for the progress bar. Closed: the panel icon and tooltip
+    // change only when MPD does, so wait for MPD to report a change instead of
+    // polling. Without a reachable MPD, check every 5 s until one appears.
+    property bool watching: false
+    function watch() {
+        if (watching || !mpdUp)
+            return
+        watching = true
+        call(["wait", "--json"], function (code) {
+            watching = false
+            refresh()
+            if (code === 0)
+                watch()
+        })
+    }
     Timer {
         interval: root.expanded ? 1000 : 5000
-        running: true
+        running: root.expanded || !root.watching
         repeat: true
         triggeredOnStart: true
-        onTriggered: root.refresh()
+        onTriggered: {
+            root.refresh()
+            root.watch()
+        }
     }
     onExpandedChanged: if (root.expanded)
         refresh()
@@ -213,6 +209,9 @@ PlasmoidItem {
         // middle click: play/pause without opening
         onClicked: mouse => mouse.button === Qt.MiddleButton ? root.send("toggle") : root.expanded = !root.expanded
         onWheel: wheel => root.send(wheel.angleDelta.y < 0 ? "next" : "prev")
+        // the tooltip shows elapsed time, which MPD doesn't announce
+        onContainsMouseChanged: if (containsMouse)
+            root.refresh()
         Kirigami.Icon {
             anchors.centerIn: parent
             width: Math.min(parent.width, parent.height, Kirigami.Units.iconSizes.smallMedium)

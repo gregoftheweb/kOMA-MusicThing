@@ -338,6 +338,27 @@ def status():
         mpd.close()
 
 
+# what the widget shows: playback, volume, the queue, and repeat/random
+WATCHED = ("player", "mixer", "playlist", "options")
+
+
+def wait(timeout):
+    """Block until MPD reports a change the widget shows, or `timeout` seconds pass.
+
+    MPD's `idle` makes the panel wake only when something happens instead of
+    polling. Returns the changed subsystem, or None on timeout.
+    """
+    mpd = connect()
+    try:
+        mpd.sock.settimeout(timeout)
+        try:
+            return mpd.command("idle", *WATCHED).get("changed")
+        except TimeoutError:
+            return None
+    finally:
+        mpd.close()
+
+
 def control(action):
     mpd = connect()
     try:
@@ -375,6 +396,9 @@ def main():
     commands = ("status", "toggle", "play", "pause", "next", "prev", "stop", "start-mpd", "stop-mpd", "rmpc", "doctor")
     for name in commands:
         sub.add_parser(name).add_argument("--json", action="store_true")
+    waiter = sub.add_parser("wait", help="block until MPD's playback, volume or queue changes")
+    waiter.add_argument("--timeout", type=float, default=300.0)
+    waiter.add_argument("--json", action="store_true")
     browser = sub.add_parser("browser-tab")
     browser.add_argument("pid", type=int)
     browser.add_argument("tab", nargs="?")
@@ -382,6 +406,10 @@ def main():
     try:
         if a.cmd == "browser-tab":
             print(json.dumps(browser_tab(a.pid, a.tab)))
+            return
+        if a.cmd == "wait":
+            changed = wait(a.timeout)
+            print(json.dumps({"changed": changed}) if a.json else (changed or "timeout"))
             return
         if a.cmd == "rmpc":
             exec_rmpc()

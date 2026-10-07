@@ -33,6 +33,7 @@ class FakeMPD:
             {"file": "B/Beatles/Help.flac", "Title": "Help!", "Artist": "The Beatles", "Album": "Help!", "Time": "138"},
             {"file": "untagged/track 07.mp3", "Time": "200"},
         ]
+        self.changed = threading.Condition()
         self.server = socket.socket()
         self.server.bind(("127.0.0.1", 0))
         self.server.listen()
@@ -75,6 +76,9 @@ class FakeMPD:
         conn.close()
 
     def reply(self, name, arg):
+        if name == "idle":
+            with self.changed:
+                return "changed: player\n" if self.changed.wait(timeout=5) else ""
         if name == "status":
             s = ["volume: 100", f"state: {self.state}", f"playlistlength: {len(self.queue)}"]
             if self.queue and self.state != "stop":
@@ -92,6 +96,10 @@ class FakeMPD:
             self.song = min(self.song + 1, len(self.queue) - 1)
         elif name == "previous":
             self.song = max(self.song - 1, 0)
+        else:
+            return ""
+        with self.changed:
+            self.changed.notify_all()
         return ""
 
     def close(self):

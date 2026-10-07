@@ -55,6 +55,7 @@ bin/install --no-place   # the same, without touching your panels
 ```text
 komamusic status [--json]        now playing
 komamusic toggle | play | pause | next | prev
+komamusic wait [--timeout 300]   block until playback, volume or the queue changes
 komamusic start-mpd              start mpd.service if MPD isn't answering, and wait for it
 komamusic stop-mpd
 komamusic doctor                 what's installed and what's missing
