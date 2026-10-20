@@ -2,7 +2,7 @@
 
 All notable changes to kOMA Music Thing. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow [Semantic Versioning](https://semver.org/).
 
-## [0.3.1] - 2026-10-20
+## [0.8.0] - 2026-10-20
 
 ### Fixed
 
