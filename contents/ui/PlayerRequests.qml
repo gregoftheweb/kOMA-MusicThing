@@ -32,7 +32,7 @@ QtObject {
         execute([action, "--json"], function (code, out, err) {
             root.controlsInFlight--
             if (run === root.generation)
-                root.response(code, out, err);
+                root.response(code, out, err)
             // Read the final server state after overlapping user controls.
             // An older status response can never overwrite a newer action.
             if (root.controlsInFlight === 0)

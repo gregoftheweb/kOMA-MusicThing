@@ -7,6 +7,8 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Window
+import org.kde.plasma.core as PlasmaCore
 import org.kde.kirigami as Kirigami
 import org.kde.plasma.components as PlasmaComponents
 import org.kde.plasma.extras as PlasmaExtras
@@ -22,7 +24,30 @@ PlasmaExtras.Representation {
     readonly property real fullWidth: Kirigami.Units.gridUnit * 48
     readonly property real fullHeight: Kirigami.Units.gridUnit * 30
 
-    // fixed sizes (min = max) so Plasma resizes the popup when switching views
+    // Apply the actual item size as well as the layout hints: Plasma can keep
+    // the expanded window geometry when only the size constraints change.
+    implicitWidth: Layout.preferredWidth
+    implicitHeight: Layout.preferredHeight
+    width: implicitWidth
+    height: implicitHeight
+
+    // The shell anchors this representation to its own mainItem. Resize the
+    // containing popup after its layout constraints have settled, including
+    // the shell's separator and the window's frame padding.
+    function syncPopupSize() {
+        var window = popup.Window.window as PlasmaCore.AppletPopup
+        if (!window || !window.mainItem)
+            return
+        window.width = Math.ceil(window.mainItem.implicitWidth + window.leftPadding + window.rightPadding)
+        window.height = Math.ceil(window.mainItem.implicitHeight + window.topPadding + window.bottomPadding)
+    }
+    onImplicitWidthChanged: Qt.callLater(syncPopupSize)
+    onImplicitHeightChanged: Qt.callLater(syncPopupSize)
+    onVisibleChanged: if (visible)
+        Qt.callLater(syncPopupSize)
+    Window.onWindowChanged: Qt.callLater(syncPopupSize)
+
+    // Fixed sizes for each view.
     Layout.minimumWidth: host.setupVisible ? Kirigami.Units.gridUnit * 28 : host.full ? fullWidth : Kirigami.Units.gridUnit * 20
     Layout.maximumWidth: Layout.minimumWidth
     Layout.preferredWidth: Layout.minimumWidth
