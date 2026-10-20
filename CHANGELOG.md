@@ -2,6 +2,14 @@
 
 All notable changes to kOMA Music Thing. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.8.0] - 2026-10-20
+
+### Fixed
+
+- Collapsing the expanded rmpc browser restores the mini popup dimensions for each panel instance, including panels on additional monitors.
+- Resize the containing Plasma popup after layout updates, accounting for its separator and frame padding.
+- Add regression coverage for repeated expansion and collapse and multiple popup containers.
+
 ## [0.3.0] - 2026-10-07
 
 ### Changed
